@@ -266,6 +266,57 @@ hover_name_col = "证券简称" if "证券简称" in plot_df.columns else ("证�
 plot_df["_x_"] = plot_df[x_col].map(to_number)
 plot_df["_y_"] = plot_df[y_col].map(to_number)
 
+# =========================
+# X和Y可视化的范围控制
+# =========================
+st.subheader("可视化数值范围控制")
+
+col_x, col_y = st.columns(2)
+
+# ---- X 轴 ----
+with col_x:
+    enable_x_range = st.checkbox(f"限制 X 轴（{x_col}）范围", value=False)
+
+    if enable_x_range:
+        xv = plot_df["_x_"].dropna()
+        if not xv.empty:
+            xmin, xmax = float(xv.min()), float(xv.max())
+            pad = (xmax - xmin) * 0.05 if xmax > xmin else 1.0
+
+            x_range = st.slider(
+                f"{x_col} 区间",
+                min_value=xmin - pad,
+                max_value=xmax + pad,
+                value=(xmin, xmax),
+            )
+
+            plot_df = plot_df[
+                (plot_df["_x_"] >= x_range[0]) &
+                (plot_df["_x_"] <= x_range[1])
+            ]
+
+# ---- Y 轴 ----
+with col_y:
+    enable_y_range = st.checkbox(f"限制 Y 轴（{y_col}）范围", value=False)
+
+    if enable_y_range:
+        yv = plot_df["_y_"].dropna()
+        if not yv.empty:
+            ymin, ymax = float(yv.min()), float(yv.max())
+            pad = (ymax - ymin) * 0.05 if ymax > ymin else 1.0
+
+            y_range = st.slider(
+                f"{y_col} 区间",
+                min_value=ymin - pad,
+                max_value=ymax + pad,
+                value=(ymin, ymax),
+            )
+
+            plot_df = plot_df[
+                (plot_df["_y_"] >= y_range[0]) &
+                (plot_df["_y_"] <= y_range[1])
+            ]
+
 need = ["_x_", "_y_"]
 
 if size_col != "(不使用)":
@@ -279,7 +330,31 @@ if plot_df.empty:
     st.warning("当前选择下没有可绘制的数据（X/Y 无法转成数值或缺失）。")
     st.stop()
 
-hover_cols = [c for c in plot_df.columns if c not in {"_x_", "_y_", "_size_", "_size_raw_"}]
+# =========================
+# Hover 内容
+# =========================
+# Hover Title：证券简称（证券代码）
+if "证券简称" in plot_df.columns and "证券代码" in plot_df.columns:
+    plot_df["_hover_title_"] = plot_df["证券简称"] + "（" + plot_df["证券代码"] + "）"
+    hover_name_col = "_hover_title_"
+
+HOVER_FIELDS = [
+    "25Q4单季扣非",
+    "QOQ",
+    "YOY",
+    "2025PE",
+    "PETTM",
+    "总市值（亿）",
+]
+
+hover_cols = [c for c in HOVER_FIELDS if c in plot_df.columns]
+
+
+hover_data_dict = {c: True for c in hover_cols}
+
+for internal_col in ["_x_", "_y_", "_size_", "_size_raw_"]:
+    if internal_col in plot_df.columns:
+        hover_data_dict[internal_col] = False
 
 fig = px.scatter(
     plot_df,
@@ -288,8 +363,9 @@ fig = px.scatter(
     size=("_size_" if size_col != "(不使用)" else None),
     color=(None if color_col == "(不使用)" else color_col),
     hover_name=hover_name_col,
-    hover_data=hover_cols,
+    hover_data=hover_data_dict,
 )
+
 
 fig.update_layout(
     height=700,
