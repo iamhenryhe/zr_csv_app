@@ -3,8 +3,8 @@ import pandas as pd
 import streamlit as st
 import plotly.express as px
 
-st.set_page_config(page_title="ZR*CSV_1.0", layout="wide")
-st.title("ZR*CSV_1.0")
+st.set_page_config(page_title="业绩断层0.1", layout="wide")
+st.title("业绩断层0.1")
 
 # ====== 缺失值 ======
 MISSING_TOKENS = {"", "na", "n/a", "nan", "none", "null", "-", "--", "—", "–"}
@@ -110,19 +110,49 @@ def make_display_df(df_raw: pd.DataFrame) -> pd.DataFrame:
     return out
 
 # =========================================================
-# 直接读取 data/B/B.csv
+# streamlit从路径从找b
 # =========================================================
-DATA_PATH = "data/B/B.csv"
+from pathlib import Path
 
-try:
-    df_B = pd.read_excel("data/B/B.xlsx")
-except Exception as e:
-    st.error(f"读取 B 表失败：{e}")
+DATA_ROOT = Path("data")
+
+st.sidebar.header("业绩断层")
+st.sidebar.subheader("选择数据集")
+
+years = sorted([
+    p.name for p in DATA_ROOT.iterdir()
+    if p.is_dir() and re.fullmatch(r"20\d{2}", p.name)
+]) if DATA_ROOT.exists() else []
+
+if not years:
+    st.sidebar.error("data/ 下未找到年份目录（例如 data/2025、data/2026...）")
     st.stop()
 
-# =========================================================
-# Sidebar：数据处理工作台
-# =========================================================
+quarters = ["Q1", "Q2", "Q3", "Q4"]
+kinds = ["预告", "实发"]
+
+# 默认：2025 / Q4 / 预告
+year_default = years.index("2025") if "2025" in years else 0
+year_sel = st.sidebar.selectbox("年份", years, index=year_default)
+
+quarter_sel = st.sidebar.radio("季度", quarters, index=3, horizontal=True)  # 默认 Q4
+kind_sel = st.sidebar.radio("类型", kinds, index=0, horizontal=True)       # 默认 预告
+
+b_path = DATA_ROOT / year_sel / f"{quarter_sel}{kind_sel}" / "B" / "B.xlsx"
+
+
+if not b_path.exists():
+    st.sidebar.error(f"未找到 B.xlsx：{b_path}")
+    st.stop()
+
+try:
+    df_B = pd.read_excel(b_path)
+except Exception as e:
+    st.error(f"读取 B 表失败：{b_path}\n\n{e}")
+    st.stop()
+
+
+
 st.sidebar.header("数据处理工作台")
 
 # ---- 日期 ----
@@ -180,11 +210,11 @@ df_C = df_after_date.loc[mask].copy()
 # 结果预览与下载（以下全部保持不变）
 # =========================
 st.divider()
-st.header("B / C 结果预览与下载")
+st.header("数据表")
 
 preview_n = st.number_input("数据预览行数", min_value=1, max_value=5000, value=50)
 
-tabB, tabC = st.tabs(["B（原始）", "C（处理后）"])
+tabB, tabC = st.tabs(["汇总（仅日期筛选）", "筛选（日期+因子筛选）"])
 
 def show_block(df_show: pd.DataFrame, name: str):
     df_disp = make_display_df(df_show)
@@ -205,19 +235,71 @@ with tabC:
 # =========================
 # 可视化（保持不变）
 # =========================
+# =========================
+# 可视化
+# =========================
 st.divider()
-st.header("交互式可视化（散点2维图工作台）")
+st.header("2D可视化")
 
-vis_source = st.radio("选择可视化数据源", ["B（原始）", "C（处理后）"])
-plot_df = df_C if vis_source.startswith("C") else df_B
+use_c = len(selected_filter_cols) > 0
+plot_df = df_C.copy() if use_c else df_B.copy()
+
+if plot_df.empty:
+    st.warning("当前选择的数据源为空，无法绘图。")
+    st.stop()
 
 all_cols_plot = list(plot_df.columns)
-x_col = st.selectbox("X轴", all_cols_plot)
-y_col = st.selectbox("Y轴", all_cols_plot)
+
+st.subheader("选择 X / Y / 点大小 / Color（自定义参数）")
+
+default_x = all_cols_plot[0]
+default_y = all_cols_plot[0]
+
+x_col = st.selectbox("X轴（推荐使用PETTM）", all_cols_plot, index=all_cols_plot.index(default_x) if default_x in all_cols_plot else 0)
+y_col = st.selectbox("Y轴（推荐使用QoQ）", all_cols_plot, index=all_cols_plot.index(default_y) if default_y in all_cols_plot else 0)
+
+size_col = st.selectbox("点大小（推荐使用YoY，市值）", options=["(不使用)"] + all_cols_plot, index=0)
+color_col = st.selectbox("颜色（推荐使用证券代码或证券简称）", options=["(不使用)"] + all_cols_plot, index=0)
+
+hover_name_col = "证券简称" if "证券简称" in plot_df.columns else ("证券代码" if "证券代码" in plot_df.columns else None)
 
 plot_df["_x_"] = plot_df[x_col].map(to_number)
 plot_df["_y_"] = plot_df[y_col].map(to_number)
-plot_df = plot_df.dropna(subset=["_x_", "_y_"])
 
-fig = px.scatter(plot_df, x="_x_", y="_y_")
+need = ["_x_", "_y_"]
+
+if size_col != "(不使用)":
+    plot_df["_size_raw_"] = plot_df[size_col].map(to_number)
+    plot_df["_size_"] = plot_df["_size_raw_"].abs()
+    need.append("_size_")
+
+plot_df = plot_df.dropna(subset=need)
+
+if plot_df.empty:
+    st.warning("当前选择下没有可绘制的数据（X/Y 无法转成数值或缺失）。")
+    st.stop()
+
+hover_cols = [c for c in plot_df.columns if c not in {"_x_", "_y_", "_size_", "_size_raw_"}]
+
+fig = px.scatter(
+    plot_df,
+    x="_x_",
+    y="_y_",
+    size=("_size_" if size_col != "(不使用)" else None),
+    color=(None if color_col == "(不使用)" else color_col),
+    hover_name=hover_name_col,
+    hover_data=hover_cols,
+)
+
+fig.update_layout(
+    height=700,
+    xaxis_title=x_col,
+    yaxis_title=y_col,
+    margin=dict(l=10, r=10, t=40, b=10),
+)
+fig.update_traces(marker=dict(opacity=0.75), selector=dict(mode="markers"))
+
 st.plotly_chart(fig, use_container_width=True)
+
+with st.expander("数据预览（绘图数据）", expanded=False):
+    st.dataframe(make_display_df(plot_df[hover_cols]).head(int(preview_n)), use_container_width=True)
