@@ -110,11 +110,14 @@ def make_display_df(df_raw: pd.DataFrame) -> pd.DataFrame:
     return out
 
 # =========================================================
-# streamlit从路径从找b
+# streamlit从路径从找b + 自动 A->B
 # =========================================================
 from pathlib import Path
 
 DATA_ROOT = Path("data")
+
+# ✅ 这里改成 a2b
+from transform.a2b import ensure_b_up_to_date
 
 st.sidebar.header("业绩断层")
 st.sidebar.subheader("选择数据集")
@@ -138,9 +141,22 @@ year_sel = st.sidebar.selectbox("年份", years, index=year_default)
 quarter_sel = st.sidebar.radio("季度", quarters, index=3, horizontal=True)  # 默认 Q4
 kind_sel = st.sidebar.radio("类型", kinds, index=0, horizontal=True)       # 默认 预告
 
+# A/B 路径（你要求的结构：A/A.xlsx  B/B.xlsx）
+a_path = DATA_ROOT / year_sel / f"{quarter_sel}{kind_sel}" / "A" / "A.xlsx"
 b_path = DATA_ROOT / year_sel / f"{quarter_sel}{kind_sel}" / "B" / "B.xlsx"
 
+# ====== 自动同步：A更新 -> 立刻重算B（或B不存在就生成）======
+try:
+    did = ensure_b_up_to_date(a_path, b_path, force=False)
+    if did:
+        st.sidebar.success("已根据 A.xlsx 更新 B.xlsx")
+    else:
+        st.sidebar.caption("B.xlsx 已是最新（无需重算）")
+except Exception as e:
+    st.sidebar.error(f"A→B 失败：{e}")
+    st.stop()
 
+# ====== 读取B ======
 if not b_path.exists():
     st.sidebar.error(f"未找到 B.xlsx：{b_path}")
     st.stop()
@@ -150,8 +166,6 @@ try:
 except Exception as e:
     st.error(f"读取 B 表失败：{b_path}\n\n{e}")
     st.stop()
-
-
 
 st.sidebar.header("数据处理工作台")
 
@@ -235,9 +249,6 @@ with tabC:
 # =========================
 # 可视化（保持不变）
 # =========================
-# =========================
-# 可视化
-# =========================
 st.divider()
 st.header("2D可视化")
 
@@ -273,7 +284,6 @@ st.subheader("可视化数值范围控制")
 
 col_x, col_y = st.columns(2)
 
-# ---- X 轴 ----
 with col_x:
     enable_x_range = st.checkbox(f"限制 X 轴（{x_col}）范围", value=False)
 
@@ -295,7 +305,6 @@ with col_x:
                 (plot_df["_x_"] <= x_range[1])
             ]
 
-# ---- Y 轴 ----
 with col_y:
     enable_y_range = st.checkbox(f"限制 Y 轴（{y_col}）范围", value=False)
 
@@ -333,7 +342,6 @@ if plot_df.empty:
 # =========================
 # Hover 内容
 # =========================
-# Hover Title：证券简称（证券代码）
 if "证券简称" in plot_df.columns and "证券代码" in plot_df.columns:
     plot_df["_hover_title_"] = plot_df["证券简称"] + "（" + plot_df["证券代码"] + "）"
     hover_name_col = "_hover_title_"
@@ -348,8 +356,6 @@ HOVER_FIELDS = [
 ]
 
 hover_cols = [c for c in HOVER_FIELDS if c in plot_df.columns]
-
-
 hover_data_dict = {c: True for c in hover_cols}
 
 for internal_col in ["_x_", "_y_", "_size_", "_size_raw_"]:
@@ -365,7 +371,6 @@ fig = px.scatter(
     hover_name=hover_name_col,
     hover_data=hover_data_dict,
 )
-
 
 fig.update_layout(
     height=700,
