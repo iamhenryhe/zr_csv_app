@@ -5,6 +5,7 @@ import plotly.express as px
 
 st.set_page_config(page_title="业绩断层0.1", layout="wide")
 st.title("业绩断层0.1")
+st.markdown("说明：此工作台负责将各个股的财报计算成技术因子，展示数据集均为财报计算清洗后表格，加以交互可视化分析。")
 
 # ====== 缺失值 ======
 MISSING_TOKENS = {"", "na", "n/a", "nan", "none", "null", "-", "--", "—", "–"}
