@@ -1,10 +1,5 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[ ]:
-
-
 # transform/a2b.py
+# -*- coding: utf-8 -*-
 
 from __future__ import annotations
 
@@ -13,16 +8,29 @@ from pathlib import Path
 import pandas as pd
 
 
-# ====== 缺失值 & 数字解析（与app保持一致,后续可以继续加 但是基本够用） ======
 MISSING_TOKENS = {"", "na", "n/a", "nan", "none", "null", "-", "--", "—", "–"}
 
+
 def _normalize_header(s: str) -> str:
+    """
+    统一清洗列名，解决 ifind / Excel 导出中的换行、_x000D_、箭头等噪声
+    """
     s = str(s)
+
+    # 处理Excel导出常见噪声
+    s = s.replace("_x000D_", " ")
+    s = s.replace("\r", " ").replace("\n", " ")
     s = s.replace("\u3000", " ")
-    s = re.sub(r"\s+", "", s)
+
+    # 去引号/箭头等
     s = s.replace('"', "").replace("'", "")
     s = s.replace("↓", "")
+
+    # 去所有空白
+    s = re.sub(r"\s+", "", s)
+
     return s.lower()
+
 
 def to_number(x):
     if x is None:
@@ -60,7 +68,6 @@ def to_number(x):
 
 
 def _build_col_map(df: pd.DataFrame) -> dict[str, str]:
-    """normalized_name -> original_name（保留第一个出现的）"""
     m = {}
     for c in df.columns:
         n = _normalize_header(c)
@@ -71,7 +78,7 @@ def _build_col_map(df: pd.DataFrame) -> dict[str, str]:
 
 def _find_col(df: pd.DataFrame, must: list[str]) -> str:
     """
-    在列名(规范化后)中寻找同时包含所有关键词的列
+    在列名(规范化后)中寻找同时包含 must 所有关键词的列
     """
     col_map = _build_col_map(df)
     keys = list(col_map.keys())
@@ -84,11 +91,27 @@ def _find_col(df: pd.DataFrame, must: list[str]) -> str:
     raise KeyError(f"找不到列：必须包含 {must}。现有列：{list(df.columns)}")
 
 
+def _find_mktcap_col(df: pd.DataFrame) -> str:
+    """
+    - 用总市值去找对应列
+    """
+    col_map = _build_col_map(df)
+    keys = list(col_map.keys())
+
+    # 优先：包含“总市值1”（老版本）
+    for k in keys:
+        if "总市值1" in k:
+            return col_map[k]
+
+    # 其次：包含“总市值”（你当前版本）
+    for k in keys:
+        if "总市值" in k:
+            return col_map[k]
+
+    raise KeyError(f"找不到市值列（包含“总市值”）。现有列：{list(df.columns)}")
+
+
 def ensure_b_up_to_date(a_path: Path, b_path: Path, force: bool = False) -> bool:
-    """
-    A更新(或B不存在) -> 生成/覆盖B
-    返回：是否执行了重算（True=重算了；False=无需重算）
-    """
     a_path = Path(a_path)
     b_path = Path(b_path)
 
@@ -99,9 +122,7 @@ def ensure_b_up_to_date(a_path: Path, b_path: Path, force: bool = False) -> bool
         a2b(a_path, b_path)
         return True
 
-    a_m = a_path.stat().st_mtime
-    b_m = b_path.stat().st_mtime
-    if a_m > b_m:
+    if a_path.stat().st_mtime > b_path.stat().st_mtime:
         a2b(a_path, b_path)
         return True
 
@@ -109,25 +130,22 @@ def ensure_b_up_to_date(a_path: Path, b_path: Path, force: bool = False) -> bool
 
 
 def a2b(a_path: Path, b_path: Path, sheet_name=0) -> Path:
-    """
-    将A转换为B：
-    -按字段语义计算（不依赖Excel列位置，api输出数据集可以不强制按照顺序）
-    - 只保留可完整计算的行（因为A不一定更新完全，可能存在还没有披露的公司）
-    """
     a_path = Path(a_path)
     b_path = Path(b_path)
     b_path.parent.mkdir(parents=True, exist_ok=True)
+
     dfA = pd.read_excel(a_path, sheet_name=sheet_name)
 
-    # ====== A表关键列 ======
+    # ====== 必要列 ======
     col_code = _find_col(dfA, ["证券代码"])
     col_name = _find_col(dfA, ["证券简称"])
+
     col_date = _find_col(dfA, ["业绩预告首次披露日期", "2025年报"])
     col_forecast = _find_col(dfA, ["预告扣非净利润下限", "2025年报"])
     col_q3_cum = _find_col(dfA, ["扣除非经常性损益后归属母公司股东的净利润", "2025三季"])
     col_2024q4 = _find_col(dfA, ["单季度", "扣除非经常性损益后归属母公司股东的净利润", "2024第四季度"])
     col_2025q3 = _find_col(dfA, ["单季度", "扣除非经常性损益后归属母公司股东的净利润", "2025第三季度"])
-    col_mktcap = _find_col(dfA, ["总市值1", "最新收盘日"])
+    col_mktcap = _find_mktcap_col(dfA) 
 
     out = pd.DataFrame({
         "证券代码": dfA[col_code].astype(str).str.strip(),
@@ -140,26 +158,26 @@ def a2b(a_path: Path, b_path: Path, sheet_name=0) -> Path:
         "_2025q3_": dfA[col_2025q3].map(to_number),
     })
 
-    # ====== 核心中间量：25Q4 = 年报预告下限 - 25三季累计 ======
+    # 25Q4
     out["25Q4单季扣非"] = out["预告下限(亿）"] - out["_q3_cum_"]
 
-    # ====== YOY / QOQ ======
+    # YOY / QOQ
     out["YOY"] = (out["25Q4单季扣非"] / out["_2024q4_"]) - 1
     out["QOQ"] = (out["25Q4单季扣非"] / out["_2025q3_"]) - 1
 
-    # ====== 2025PE ======
+    # 2025PE / PETTM
     out["2025PE"] = out["总市值（亿）"] / out["预告下限(亿）"]
-
-    # ====== PETTM（趋势外推）=====
     denom_ttm = out["_2025q3_"] + 3 * out["25Q4单季扣非"]
     out["PETTM"] = out["总市值（亿）"] / denom_ttm
 
-    # ====== 整行丢弃 =====
-    need_cols = ["证券代码", "证券简称", "日期", "预告下限(亿）", "总市值（亿）",
-                 "25Q4单季扣非", "YOY", "QOQ", "2025PE", "PETTM",
-                 "_2024q4_", "_2025q3_", "_q3_cum_"]
-    out = out.dropna(subset=need_cols)
+    need = [
+        "证券代码", "证券简称", "日期", "预告下限(亿）", "总市值（亿）",
+        "25Q4单季扣非", "YOY", "QOQ", "2025PE", "PETTM",
+        "_2024q4_", "_2025q3_", "_q3_cum_"
+    ]
+    out = out.dropna(subset=need)
 
+    # 分母不能为0
     out = out[
         (out["_2024q4_"] != 0) &
         (out["_2025q3_"] != 0) &
@@ -167,7 +185,6 @@ def a2b(a_path: Path, b_path: Path, sheet_name=0) -> Path:
         (denom_ttm != 0)
     ].copy()
 
-    # ====== 按B表列顺序输出 ======
     out = out[[
         "证券代码",
         "证券简称",
@@ -183,18 +200,3 @@ def a2b(a_path: Path, b_path: Path, sheet_name=0) -> Path:
 
     out.to_excel(b_path, index=False)
     return b_path
-
-
-if __name__ == "__main__":
-    import argparse
-    p = argparse.ArgumentParser()
-    p.add_argument("--a", required=True, help="A.xlsx path")
-    p.add_argument("--b", required=True, help="B.xlsx path")
-    p.add_argument("--force", action="store_true", help="force recompute")
-    args = p.parse_args()
-
-    a_path = Path(args.a)
-    b_path = Path(args.b)
-    ensure_b_up_to_date(a_path, b_path, force=args.force)
-    print(f"OK: {a_path} -> {b_path}")
-
