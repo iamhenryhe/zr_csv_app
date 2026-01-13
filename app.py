@@ -4,8 +4,28 @@ import streamlit as st
 import plotly.express as px
 
 st.set_page_config(page_title="业绩断层0.1", layout="wide")
+# =========================================================
+# 模块激活状态 reference： aiagents-stock 的模块按钮：https://github.com/oficcejo/aiagents-stock）
+# =========================================================
+if "active_module" not in st.session_state:
+    st.session_state.active_module = None
+# 模块入口
+st.sidebar.title("快速导航")
+
+if st.sidebar.button("📊 业绩断层"):
+    if st.session_state.active_module == "业绩断层":
+        st.session_state.active_module = None
+    else:
+        st.session_state.active_module = "业绩断层"
+
+if st.session_state.active_module != "业绩断层":
+    st.info("👈 点击左侧项目以展开指定投研模块")
+    st.stop()
+
+# 业绩断层的module
 st.title("业绩断层0.1")
 st.markdown("说明：此工作台负责将各个股的财报计算成技术因子，展示数据集均为财报计算清洗后表格，加以交互可视化分析。")
+
 
 # ====== 缺失值 ======
 MISSING_TOKENS = {"", "na", "n/a", "nan", "none", "null", "-", "--", "—", "–"}
@@ -117,10 +137,10 @@ from pathlib import Path
 
 DATA_ROOT = Path("data")
 
-# ✅ 这里改成 a2b
+# a2b
 from transform.a2b import ensure_b_up_to_date
 
-st.sidebar.header("业绩断层")
+#st.sidebar.header("业绩断层")
 st.sidebar.subheader("选择数据集")
 
 years = sorted([
@@ -135,18 +155,18 @@ if not years:
 quarters = ["Q1", "Q2", "Q3", "Q4"]
 kinds = ["预告", "实发"]
 
-# 默认：2025 / Q4 / 预告
+# 默认：2025 / Q4 / 预告 没啥子用，防止老板说是error
 year_default = years.index("2025") if "2025" in years else 0
 year_sel = st.sidebar.selectbox("年份", years, index=year_default)
 
-quarter_sel = st.sidebar.radio("季度", quarters, index=3, horizontal=True)  # 默认 Q4
-kind_sel = st.sidebar.radio("类型", kinds, index=0, horizontal=True)       # 默认 预告
+quarter_sel = st.sidebar.radio("季度", quarters, index=3, horizontal=True) 
+kind_sel = st.sidebar.radio("类型", kinds, index=0, horizontal=True)    
 
-# A/B 路径（你要求的结构：A/A.xlsx  B/B.xlsx）
+# A/B 路径（data/年份/QX预告（实发）/A(B)/A(B).xlsx）
 a_path = DATA_ROOT / year_sel / f"{quarter_sel}{kind_sel}" / "A" / "A.xlsx"
 b_path = DATA_ROOT / year_sel / f"{quarter_sel}{kind_sel}" / "B" / "B.xlsx"
 
-# ====== 自动同步：A更新 -> 立刻重算B（或B不存在就生成）======
+# 自动同步：A更新 就会使用a2b 重算B 因为每次使用app，都会调用到a2b（或B不存在就生成）
 try:
     did = ensure_b_up_to_date(a_path, b_path, force=False)
     if did:
@@ -169,8 +189,6 @@ except Exception as e:
     st.stop()
 
 st.sidebar.header("数据处理工作台")
-
-# ---- 日期 ----
 st.sidebar.subheader("1）日期")
 
 df_after_date = df_B.copy()
@@ -221,9 +239,6 @@ for c in selected_filter_cols:
 
 df_C = df_after_date.loc[mask].copy()
 
-# =========================
-# 结果预览与下载（以下全部保持不变）
-# =========================
 st.divider()
 st.header("数据表")
 
@@ -248,7 +263,7 @@ with tabC:
     show_block(df_C, "C")
 
 # =========================
-# 可视化（保持不变）
+# 可视化
 # =========================
 st.divider()
 st.header("2D可视化")
