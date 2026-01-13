@@ -297,7 +297,29 @@ plot_df["_y_"] = plot_df[y_col].map(to_number)
 # X和Y可视化的范围控制
 # =========================
 st.subheader("可视化数值范围控制")
+# =========================
+# 选择要显示的证券JAN13 added
+# =========================
+SEC_COL = None
+if "证券简称" in plot_df.columns:
+    SEC_COL = "证券简称"
+elif "证券代码" in plot_df.columns:
+    SEC_COL = "证券代码"
 
+if SEC_COL is not None:
+    all_secs = sorted(plot_df[SEC_COL].dropna().unique().tolist())
+
+    selected_secs = st.multiselect(
+        "如需输出指定证券请在下方选择，不选将默认可视化整个筛选好的数据集",
+        options=all_secs,
+        default=[]
+    )
+
+    if selected_secs:
+        plot_df = plot_df[plot_df[SEC_COL].isin(selected_secs)].copy()
+# =========================
+# 选择要显示的证券JAN13 added
+# =========================
 col_x, col_y = st.columns(2)
 
 with col_x:
