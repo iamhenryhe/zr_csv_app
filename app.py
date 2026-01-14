@@ -287,6 +287,24 @@ with tabC:
     show_block(df_C, "C")
 
 # =========================
+#YOY分箱 用于可视化 点的大小选择更小
+# =========================
+def yoy_to_size_bucket(v):
+    if pd.isna(v):
+        return 6
+    if v < 0:
+        return 6
+    elif v <= 0.5:      # 0–50%
+        return 10
+    elif v <= 1.0:      # 50–100%
+        return 14
+    elif v <= 2.0:      # 100–200%
+        return 18
+    else:               # >200%
+        return 22
+
+
+# =========================
 # 可视化
 # =========================
 st.divider()
@@ -422,8 +440,14 @@ with col_y:
 
 need = ["_x_", "_y_"]
 if size_col != "(不使用)":
-    plot_df["_size_raw_"] = plot_df[size_col].map(to_number)
-    plot_df["_size_"] = plot_df["_size_raw_"].abs()
+
+    raw = plot_df[size_col].map(to_number)
+
+    if is_yoy_qoq_col(size_col):
+        plot_df["_size_"] = raw.apply(yoy_to_size_bucket)
+    else:
+        plot_df["_size_"] = raw.abs()
+
     need.append("_size_")
 
 plot_df = plot_df.dropna(subset=need)
@@ -550,8 +574,6 @@ fig.update_traces(
     hovertemplate="<br>".join(hover_lines) + "<extra></extra>"
 )
 
-
-
 # ---------- 新增结束 ----------
 
 fig.update_layout(
@@ -559,6 +581,11 @@ fig.update_layout(
     xaxis_title=x_col,
     yaxis_title=y_col,
     margin=dict(l=10, r=10, t=40, b=10),
+)
+fig.update_layout(
+    hoverlabel=dict(
+        font=dict(size=20)
+    )
 )
 
 if is_yoy_qoq_col(x_col):
@@ -569,3 +596,4 @@ if is_yoy_qoq_col(y_col):
 fig.update_traces(marker=dict(opacity=0.75), selector=dict(mode="markers"))
 
 st.plotly_chart(fig, use_container_width=True)
+
