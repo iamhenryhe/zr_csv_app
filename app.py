@@ -128,20 +128,17 @@ def make_display_df(df_raw: pd.DataFrame) -> pd.DataFrame:
     out = df_raw.copy()
 
     for c in out.columns:
-        # QoQ / YoY → 百分比 + 1 位小数
         if is_yoy_qoq_col(c):
-            out[c] = out[c].map(
-                lambda x: f"{x * 100:.1f}%" if pd.notna(x) else pd.NA
+            out[c] = out[c].map(to_number).map(
+                lambda v: (f"{v*100:.1f}%"
+                           if pd.notna(v) else pd.NA)
             )
         else:
-            # 其他数值列 → 小数点后一位
+            # 其他数值：显示。1 位小数（只对能转数字的列做）
             if pd.api.types.is_numeric_dtype(out[c]):
-                out[c] = out[c].map(
-                    lambda x: f"{x:.1f}" if pd.notna(x) else pd.NA
-                )
+                out[c] = out[c].map(lambda v: f"{v:.1f}" if pd.notna(v) else pd.NA)
 
     return out
-
 
 # =========================================================
 # streamlit从路径从找b + 自动 A->B
@@ -260,14 +257,28 @@ preview_n = st.number_input("数据预览行数", min_value=1, max_value=5000, v
 tabB, tabC = st.tabs(["汇总", "筛选（日期+因子筛选）"])
 
 def show_block(df_show: pd.DataFrame, name: str):
+    df_view = df_show.copy()
+
+    for c in ["YOY", "QOQ"]:
+        if c in df_view.columns:
+            df_view[c] = df_view[c] * 100
+
+    st.dataframe(
+        df_view.head(int(preview_n)),
+        use_container_width=True,
+        column_config={
+            "YOY": st.column_config.NumberColumn(format="%.1f%%"),
+            "QOQ": st.column_config.NumberColumn(format="%.1f%%"),
+        }
+    )
     df_disp = make_display_df(df_show)
-    st.dataframe(df_disp.head(int(preview_n)), use_container_width=True)
     st.download_button(
         f"下载 {name}.csv",
         data=df_disp.to_csv(index=False).encode("utf-8-sig"),
         file_name=f"{name}.csv",
         mime="text/csv",
     )
+
 
 with tabB:
     show_block(df_B, "B")
@@ -295,24 +306,48 @@ st.subheader("选择 X / Y / 点大小 / Color（自定义参数）")
 default_x = all_cols_plot[0]
 default_y = all_cols_plot[0]
 
-x_col = st.selectbox("X轴（推荐使用PETTM）", all_cols_plot, index=all_cols_plot.index(default_x) if default_x in all_cols_plot else 0)
-y_col = st.selectbox("Y轴（推荐使用QoQ）", all_cols_plot, index=all_cols_plot.index(default_y) if default_y in all_cols_plot else 0)
+x_col = st.selectbox(
+    "X轴（推荐使用PETTM）",
+    all_cols_plot,
+    index=all_cols_plot.index(default_x) if default_x in all_cols_plot else 0
+)
+y_col = st.selectbox(
+    "Y轴（推荐使用QoQ）",
+    all_cols_plot,
+    index=all_cols_plot.index(default_y) if default_y in all_cols_plot else 0
+)
 
-size_col = st.selectbox("点大小（推荐使用YoY，市值）", options=["(不使用)"] + all_cols_plot, index=0)
-color_col = st.selectbox("颜色（推荐使用证券代码或证券简称）", options=["(不使用)"] + all_cols_plot, index=0)
+size_col = st.selectbox(
+    "点大小（推荐使用YoY，市值）",
+    options=["(不使用)"] + all_cols_plot,
+    index=0
+)
+color_col = st.selectbox(
+    "颜色（推荐使用证券代码或证券简称）",
+    options=["(不使用)"] + all_cols_plot,
+    index=0
+)
 
-hover_name_col = "证券简称" if "证券简称" in plot_df.columns else ("证券代码" if "证券代码" in plot_df.columns else None)
+hover_name_col = (
+    "证券简称"
+    if "证券简称" in plot_df.columns
+    else ("证券代码" if "证券代码" in plot_df.columns else None)
+)
 
+# ---------- 核心数值列 ----------
 plot_df["_x_"] = plot_df[x_col].map(to_number)
+if is_yoy_qoq_col(x_col):
+    plot_df["_x_"] = plot_df["_x_"] * 100
+
 plot_df["_y_"] = plot_df[y_col].map(to_number)
+if is_yoy_qoq_col(y_col):
+    plot_df["_y_"] = plot_df["_y_"] * 100
 
 # =========================
-# X和Y可视化的范围控制
+# X 和 Y 范围控制
 # =========================
 st.subheader("可视化数值范围控制")
-# =========================
-# 选择要显示的证券JAN13 added
-# =========================
+
 SEC_COL = None
 if "证券简称" in plot_df.columns:
     SEC_COL = "证券简称"
@@ -321,36 +356,29 @@ elif "证券代码" in plot_df.columns:
 
 if SEC_COL is not None:
     all_secs = sorted(plot_df[SEC_COL].dropna().unique().tolist())
-
     selected_secs = st.multiselect(
         "如需输出指定证券请在下方选择，不选将默认可视化整个筛选好的数据集",
         options=all_secs,
         default=[]
     )
-
     if selected_secs:
         plot_df = plot_df[plot_df[SEC_COL].isin(selected_secs)].copy()
-# =========================
-# 选择要显示的证券JAN13 added
-# =========================
+
 col_x, col_y = st.columns(2)
 
 with col_x:
     enable_x_range = st.checkbox(f"限制 X 轴（{x_col}）范围", value=False)
-
     if enable_x_range:
         xv = plot_df["_x_"].dropna()
         if not xv.empty:
             xmin, xmax = float(xv.min()), float(xv.max())
             pad = (xmax - xmin) * 0.05 if xmax > xmin else 1.0
-
             x_range = st.slider(
                 f"{x_col} 区间",
                 min_value=xmin - pad,
                 max_value=xmax + pad,
                 value=(xmin, xmax),
             )
-
             plot_df = plot_df[
                 (plot_df["_x_"] >= x_range[0]) &
                 (plot_df["_x_"] <= x_range[1])
@@ -358,80 +386,82 @@ with col_x:
 
 with col_y:
     enable_y_range = st.checkbox(f"限制 Y 轴（{y_col}）范围", value=False)
-
     if enable_y_range:
         yv = plot_df["_y_"].dropna()
         if not yv.empty:
             ymin, ymax = float(yv.min()), float(yv.max())
             pad = (ymax - ymin) * 0.05 if ymax > ymin else 1.0
-
             y_range = st.slider(
                 f"{y_col} 区间",
                 min_value=ymin - pad,
                 max_value=ymax + pad,
                 value=(ymin, ymax),
             )
-
             plot_df = plot_df[
                 (plot_df["_y_"] >= y_range[0]) &
                 (plot_df["_y_"] <= y_range[1])
             ]
 
 need = ["_x_", "_y_"]
-
 if size_col != "(不使用)":
     plot_df["_size_raw_"] = plot_df[size_col].map(to_number)
     plot_df["_size_"] = plot_df["_size_raw_"].abs()
     need.append("_size_")
 
 plot_df = plot_df.dropna(subset=need)
-
 if plot_df.empty:
     st.warning("当前选择下没有可绘制的数据（X/Y 无法转成数值或缺失）。")
     st.stop()
 
 # =========================
-# Hover 内容
+# Hover
 # =========================
 if "证券简称" in plot_df.columns and "证券代码" in plot_df.columns:
     plot_df["_hover_title_"] = plot_df["证券简称"] + "（" + plot_df["证券代码"] + "）"
     hover_name_col = "_hover_title_"
 
-hover_disp_df = make_display_df(plot_df)
-
-HOVER_FIELDS = [
+CUSTOM_FIELDS = [
     "25Q4单季扣非",
-    "QOQ",
-    "YOY",
     "2025PE",
     "PETTM",
     "总市值（亿）",
 ]
-hover_cols = [c for c in HOVER_FIELDS if c in hover_disp_df.columns]
+custom_cols = [c for c in CUSTOM_FIELDS if c in plot_df.columns]
 
 fig = px.scatter(
-    plot_df, 
+    plot_df,
     x="_x_",
     y="_y_",
     size=("_size_" if size_col != "(不使用)" else None),
     color=(None if color_col == "(不使用)" else color_col),
-
     hover_name=hover_name_col,
-    hover_data=None,        # ← 关键 1：关闭默认 hover
-    custom_data=hover_disp_df[hover_cols],
+    custom_data=custom_cols,
 )
+
+hover_lines = []
+hover_lines.append("%{hovertext}")
+
+# X（只用坐标值）
+if is_yoy_qoq_col(x_col):
+    hover_lines.append(f"{x_col}: %{{x:.1f}}%")
+else:
+    hover_lines.append(f"{x_col}: %{{x:.2f}}")
+
+# Y（只用坐标值）
+if is_yoy_qoq_col(y_col):
+    hover_lines.append(f"{y_col}: %{{y:.1f}}%")
+else:
+    hover_lines.append(f"{y_col}: %{{y:.2f}}")
+
+# 其他指标（非百分比）
+for i, c in enumerate(custom_cols):
+    hover_lines.append(f"{c}: %{{customdata[{i}]:.2f}}")
 
 fig.update_traces(
-    hoverinfo="skip",
-    hovertemplate=
-        "<b>%{hovertext}</b><br>" +
-        "<br>".join(
-            f"{col}: %{{customdata[{i}]}}"
-            for i, col in enumerate(hover_cols)
-        ) +
-        "<extra></extra>"
+    hovertemplate="<br>".join(hover_lines) + "<extra></extra>"
 )
 
+# ---------- 新增结束 ----------
 
 fig.update_layout(
     height=700,
@@ -440,41 +470,11 @@ fig.update_layout(
     margin=dict(l=10, r=10, t=40, b=10),
 )
 
-# QoQ / YoY 坐标轴显示百分比（不影响底层数值）
-def percent_axis(fig, axis="y"):
-    if axis == "x":
-        fig.update_xaxes(
-            ticksuffix="%",
-            tickformat=".1f"
-        )
-    else:
-        fig.update_yaxes(
-            ticksuffix="%",
-            tickformat=".1f"
-        )
 if is_yoy_qoq_col(x_col):
-    percent_axis(fig, axis="x")
-
+    fig.update_xaxes(ticksuffix="%")
 if is_yoy_qoq_col(y_col):
-    percent_axis(fig, axis="y")
-
+    fig.update_yaxes(ticksuffix="%")
 
 fig.update_traces(marker=dict(opacity=0.75), selector=dict(mode="markers"))
 
 st.plotly_chart(fig, use_container_width=True)
-
-with st.expander("数据预览（绘图数据）", expanded=False):
-    # 展示表不用 那个hover的 复用C表 因为展示的时候要把证券代码还有简称去了
-    df_preview = make_display_df(plot_df)
-    drop_internal_cols = [
-        "_x_", "_y_", "_size_", "_size_raw_", "_hover_title_"
-    ]
-    df_preview = df_preview.drop(
-        columns=[c for c in drop_internal_cols if c in df_preview.columns],
-        errors="ignore"
-    )
-
-    st.dataframe(
-        df_preview.head(int(preview_n)),
-        use_container_width=True
-    )

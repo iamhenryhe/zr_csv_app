@@ -145,7 +145,7 @@ def a2b(a_path: Path, b_path: Path, sheet_name=0) -> Path:
     col_q3_cum = _find_col(dfA, ["扣除非经常性损益后归属母公司股东的净利润", "2025三季"])
     col_2024q4 = _find_col(dfA, ["单季度", "扣除非经常性损益后归属母公司股东的净利润", "2024第四季度"])
     col_2025q3 = _find_col(dfA, ["单季度", "扣除非经常性损益后归属母公司股东的净利润", "2025第三季度"])
-    col_mktcap = _find_mktcap_col(dfA) 
+    col_mktcap = _find_mktcap_col(dfA)
 
     out = pd.DataFrame({
         "证券代码": dfA[col_code].astype(str).str.strip(),
@@ -161,7 +161,7 @@ def a2b(a_path: Path, b_path: Path, sheet_name=0) -> Path:
     # 25Q4
     out["25Q4单季扣非"] = out["预告下限(亿）"] - out["_q3_cum_"]
 
-    # YOY / QOQ
+    # YOY / QOQ（ratio，仍为 float）
     out["YOY"] = (out["25Q4单季扣非"] / out["_2024q4_"]) - 1
     out["QOQ"] = (out["25Q4单季扣非"] / out["_2025q3_"]) - 1
 
@@ -184,6 +184,26 @@ def a2b(a_path: Path, b_path: Path, sheet_name=0) -> Path:
         (out["预告下限(亿）"] != 0) &
         (denom_ttm != 0)
     ].copy()
+
+    # ===============================
+    # 数值口径冻结（只做 round，不做字符串格式化）
+    # - YOY/QOQ：保留 3 位小数（ratio）
+    # - 其他：保留 1 位小数
+    # ===============================
+    for c in ["YOY", "QOQ"]:
+        if c in out.columns:
+            out[c] = out[c].astype(float).round(3)
+
+    round_1_cols = [
+        "预告下限(亿）",
+        "总市值（亿）",
+        "25Q4单季扣非",
+        "2025PE",
+        "PETTM",
+    ]
+    for c in round_1_cols:
+        if c in out.columns:
+            out[c] = out[c].astype(float).round(1)
 
     out = out[[
         "证券代码",
