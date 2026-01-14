@@ -432,18 +432,26 @@ if plot_df.empty:
     st.stop()
 
 # =========================
-# Hover
+# Hover（最终正确版）
 # =========================
+
+# ---- hover 标题 ----
 if "证券简称" in plot_df.columns and "证券代码" in plot_df.columns:
     plot_df["_hover_title_"] = plot_df["证券简称"] + "（" + plot_df["证券代码"] + "）"
     hover_name_col = "_hover_title_"
+else:
+    hover_name_col = None
 
+# ---- 明确：哪些字段允许进 hover（但不一定都会显示）----
 CUSTOM_FIELDS = [
+    "YOY",
+    "QOQ",
     "25Q4单季扣非",
     "2025PE",
     "PETTM",
     "总市值（亿）",
 ]
+
 custom_cols = [c for c in CUSTOM_FIELDS if c in plot_df.columns]
 
 fig = px.scatter(
@@ -456,28 +464,93 @@ fig = px.scatter(
     custom_data=custom_cols,
 )
 
+# =========================
+# Hover（终极稳定版｜不在 hovertemplate 里做任何运算）
+# =========================
+
+# ---- hover 标题 ----
+if "证券简称" in plot_df.columns and "证券代码" in plot_df.columns:
+    plot_df["_hover_title_"] = plot_df["证券简称"] + "（" + plot_df["证券代码"] + "）"
+    hover_name_col = "_hover_title_"
+else:
+    hover_name_col = None
+
+# =========================================================
+# ① 预先准备 hover 专用列（所有 % 都在这里算好）
+# =========================================================
+if "YOY" in plot_df.columns:
+    plot_df["_YOY_PCT_"] = plot_df["YOY"] * 100
+
+if "QOQ" in plot_df.columns:
+    plot_df["_QOQ_PCT_"] = plot_df["QOQ"] * 100
+
+# =========================================================
+# ② 允许进入 hover 的字段（注意：用的是 *_PCT_）
+# =========================================================
+CUSTOM_FIELDS = [
+    "_YOY_PCT_",
+    "_QOQ_PCT_",
+    "25Q4单季扣非",
+    "2025PE",
+    "PETTM",
+    "总市值（亿）",
+]
+
+custom_cols = [c for c in CUSTOM_FIELDS if c in plot_df.columns]
+
+fig = px.scatter(
+    plot_df,
+    x="_x_",
+    y="_y_",
+    size=("_size_" if size_col != "(不使用)" else None),
+    color=(None if color_col == "(不使用)" else color_col),
+    hover_name=hover_name_col,
+    custom_data=custom_cols,
+)
+
+# =========================================================
+# ③ hovertemplate（只取值 + 格式化，不做任何计算）
+# =========================================================
 hover_lines = []
+
+# 标题
 hover_lines.append("%{hovertext}")
 
-# X（只用坐标值）
+# ---- X 轴 ----
 if is_yoy_qoq_col(x_col):
     hover_lines.append(f"{x_col}: %{{x:.1f}}%")
 else:
     hover_lines.append(f"{x_col}: %{{x:.2f}}")
 
-# Y（只用坐标值）
+# ---- Y 轴 ----
 if is_yoy_qoq_col(y_col):
     hover_lines.append(f"{y_col}: %{{y:.1f}}%")
 else:
     hover_lines.append(f"{y_col}: %{{y:.2f}}")
 
-# 其他指标（非百分比）
+# ---- 其他指标（排除已经作为 X/Y 的）----
 for i, c in enumerate(custom_cols):
-    hover_lines.append(f"{c}: %{{customdata[{i}]:.2f}}")
+
+    # 映射回原始指标名（展示用）
+    display_name = c.replace("_YOY_PCT_", "YOY").replace("_QOQ_PCT_", "QOQ")
+
+    if display_name == x_col or display_name == y_col:
+        continue
+
+    if c.endswith("_PCT_"):
+        hover_lines.append(
+            f"{display_name}: %{{customdata[{i}]:.1f}}%"
+        )
+    else:
+        hover_lines.append(
+            f"{display_name}: %{{customdata[{i}]:.2f}}"
+        )
 
 fig.update_traces(
     hovertemplate="<br>".join(hover_lines) + "<extra></extra>"
 )
+
+
 
 # ---------- 新增结束 ----------
 
