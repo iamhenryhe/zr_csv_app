@@ -110,7 +110,6 @@ def _find_mktcap_col(df: pd.DataFrame) -> str:
 
     raise KeyError(f"找不到市值列（包含“总市值”）。现有列：{list(df.columns)}")
 
-
 def ensure_b_up_to_date(a_path: Path, b_path: Path, force: bool = False) -> bool:
     a_path = Path(a_path)
     b_path = Path(b_path)
@@ -118,15 +117,9 @@ def ensure_b_up_to_date(a_path: Path, b_path: Path, force: bool = False) -> bool
     if not a_path.exists():
         raise FileNotFoundError(f"未找到 A.xlsx：{a_path}")
 
-    if force or (not b_path.exists()):
-        a2b(a_path, b_path)
-        return True
-
-    if a_path.stat().st_mtime > b_path.stat().st_mtime:
-        a2b(a_path, b_path)
-        return True
-
-    return False
+    # 永远从 A 生成 B
+    a2b(a_path, b_path)
+    return True
 
 
 def a2b(a_path: Path, b_path: Path, sheet_name=0) -> Path:
