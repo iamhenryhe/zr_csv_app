@@ -311,7 +311,7 @@ st.divider()
 st.header("2D可视化")
 
 use_c = len(selected_filter_cols) > 0
-plot_df = df_C.copy() if use_c else df_B.copy()
+plot_df = df_C.copy() if use_c else df_after_date.copy()
 
 if plot_df.empty:
     st.warning("当前选择的数据源为空，无法绘图。")
@@ -364,7 +364,7 @@ if is_yoy_qoq_col(y_col):
 # =========================
 # X 和 Y 范围控制
 # =========================
-st.subheader("指定代码")
+st.subheader("指定代码（不选则默认符合筛选条件的全部标的）")
 
 HAS_NAME = "证券简称" in plot_df.columns
 HAS_CODE = "证券代码" in plot_df.columns
@@ -390,15 +390,36 @@ if HAS_NAME or HAS_CODE:
 
     all_labels = sorted(label_to_index.keys())
 
-    selected_labels = st.multiselect(
-        "输入或选择证券（支持 证券代码 / 证券简称）",
+# =========================
+# 指定 / 排除  可多选
+# =========================
+
+col_keep, col_drop = st.columns(2)
+
+with col_keep:
+    keep_labels = st.multiselect(
+        "添加（可多选，输入股票代码或简称即可）",
         options=all_labels,
-        default=[]
+        default=[],
+        help="只显示你选中的证券"
     )
 
-    if selected_labels:
-        idx = [label_to_index[l] for l in selected_labels]
-        plot_df = plot_df.loc[idx].copy()
+with col_drop:
+    drop_labels = st.multiselect(
+        "删除（可多选）",
+        options=all_labels,
+        default=[],
+        help="这些证券不会出现在图中"
+    )
+
+if keep_labels:
+    keep_idx = [label_to_index[l] for l in keep_labels]
+    plot_df = plot_df.loc[keep_idx].copy()
+
+if drop_labels:
+    drop_idx = {label_to_index[l] for l in drop_labels}
+    plot_df = plot_df.loc[~plot_df.index.isin(drop_idx)].copy()
+
 
 col_x, col_y = st.columns(2)
 
