@@ -346,23 +346,41 @@ if is_yoy_qoq_col(y_col):
 # =========================
 # X 和 Y 范围控制
 # =========================
-st.subheader("可视化数值范围控制")
+st.subheader("指定代码")
 
-SEC_COL = None
-if "证券简称" in plot_df.columns:
-    SEC_COL = "证券简称"
-elif "证券代码" in plot_df.columns:
-    SEC_COL = "证券代码"
+HAS_NAME = "证券简称" in plot_df.columns
+HAS_CODE = "证券代码" in plot_df.columns
 
-if SEC_COL is not None:
-    all_secs = sorted(plot_df[SEC_COL].dropna().unique().tolist())
-    selected_secs = st.multiselect(
-        "如需输出指定证券请在下方选择，不选将默认可视化整个筛选好的数据集",
-        options=all_secs,
+if HAS_NAME or HAS_CODE:
+    # === 构造显示用 label ===
+    def make_label(row):
+        name = str(row["证券简称"]) if HAS_NAME else ""
+        code = str(row["证券代码"]) if HAS_CODE else ""
+        if name and code:
+            return f"{name}（{code}）"
+        return name or code
+
+    plot_df["_sec_label_"] = plot_df.apply(make_label, axis=1)
+
+    # label -> index 映射（用于反查）
+    label_to_index = (
+        plot_df[["_sec_label_"]]
+        .reset_index()
+        .set_index("_sec_label_")["index"]
+        .to_dict()
+    )
+
+    all_labels = sorted(label_to_index.keys())
+
+    selected_labels = st.multiselect(
+        "输入或选择证券（支持 证券代码 / 证券简称）",
+        options=all_labels,
         default=[]
     )
-    if selected_secs:
-        plot_df = plot_df[plot_df[SEC_COL].isin(selected_secs)].copy()
+
+    if selected_labels:
+        idx = [label_to_index[l] for l in selected_labels]
+        plot_df = plot_df.loc[idx].copy()
 
 col_x, col_y = st.columns(2)
 
