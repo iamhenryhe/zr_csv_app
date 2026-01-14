@@ -126,9 +126,22 @@ def format_percent_value(v, decimals=2):
 
 def make_display_df(df_raw: pd.DataFrame) -> pd.DataFrame:
     out = df_raw.copy()
-    for c in [c for c in out.columns if is_yoy_qoq_col(c)]:
-        out[c] = out[c].map(to_number).map(lambda x: format_percent_value(x))
+
+    for c in out.columns:
+        # QoQ / YoY → 百分比 + 1 位小数
+        if is_yoy_qoq_col(c):
+            out[c] = out[c].map(
+                lambda x: f"{x * 100:.1f}%" if pd.notna(x) else pd.NA
+            )
+        else:
+            # 其他数值列 → 小数点后一位
+            if pd.api.types.is_numeric_dtype(out[c]):
+                out[c] = out[c].map(
+                    lambda x: f"{x:.1f}" if pd.notna(x) else pd.NA
+                )
+
     return out
+
 
 # =========================================================
 # streamlit从路径从找b + 自动 A->B
@@ -244,7 +257,7 @@ st.header("数据表")
 
 preview_n = st.number_input("数据预览行数", min_value=1, max_value=5000, value=50)
 
-tabB, tabC = st.tabs(["汇总（仅日期筛选）", "筛选（日期+因子筛选）"])
+tabB, tabC = st.tabs(["汇总", "筛选（日期+因子筛选）"])
 
 def show_block(df_show: pd.DataFrame, name: str):
     df_disp = make_display_df(df_show)
@@ -384,6 +397,8 @@ if "证券简称" in plot_df.columns and "证券代码" in plot_df.columns:
     plot_df["_hover_title_"] = plot_df["证券简称"] + "（" + plot_df["证券代码"] + "）"
     hover_name_col = "_hover_title_"
 
+hover_disp_df = make_display_df(plot_df)
+
 HOVER_FIELDS = [
     "25Q4单季扣非",
     "QOQ",
@@ -392,23 +407,31 @@ HOVER_FIELDS = [
     "PETTM",
     "总市值（亿）",
 ]
-
-hover_cols = [c for c in HOVER_FIELDS if c in plot_df.columns]
-hover_data_dict = {c: True for c in hover_cols}
-
-for internal_col in ["_x_", "_y_", "_size_", "_size_raw_"]:
-    if internal_col in plot_df.columns:
-        hover_data_dict[internal_col] = False
+hover_cols = [c for c in HOVER_FIELDS if c in hover_disp_df.columns]
 
 fig = px.scatter(
-    plot_df,
+    plot_df, 
     x="_x_",
     y="_y_",
     size=("_size_" if size_col != "(不使用)" else None),
     color=(None if color_col == "(不使用)" else color_col),
+
     hover_name=hover_name_col,
-    hover_data=hover_data_dict,
+    hover_data=None,        # ← 关键 1：关闭默认 hover
+    custom_data=hover_disp_df[hover_cols],
 )
+
+fig.update_traces(
+    hoverinfo="skip",
+    hovertemplate=
+        "<b>%{hovertext}</b><br>" +
+        "<br>".join(
+            f"{col}: %{{customdata[{i}]}}"
+            for i, col in enumerate(hover_cols)
+        ) +
+        "<extra></extra>"
+)
+
 
 fig.update_layout(
     height=700,
@@ -416,9 +439,42 @@ fig.update_layout(
     yaxis_title=y_col,
     margin=dict(l=10, r=10, t=40, b=10),
 )
+
+# QoQ / YoY 坐标轴显示百分比（不影响底层数值）
+def percent_axis(fig, axis="y"):
+    if axis == "x":
+        fig.update_xaxes(
+            ticksuffix="%",
+            tickformat=".1f"
+        )
+    else:
+        fig.update_yaxes(
+            ticksuffix="%",
+            tickformat=".1f"
+        )
+if is_yoy_qoq_col(x_col):
+    percent_axis(fig, axis="x")
+
+if is_yoy_qoq_col(y_col):
+    percent_axis(fig, axis="y")
+
+
 fig.update_traces(marker=dict(opacity=0.75), selector=dict(mode="markers"))
 
 st.plotly_chart(fig, use_container_width=True)
 
 with st.expander("数据预览（绘图数据）", expanded=False):
-    st.dataframe(make_display_df(plot_df[hover_cols]).head(int(preview_n)), use_container_width=True)
+    # 展示表不用 那个hover的 复用C表 因为展示的时候要把证券代码还有简称去了
+    df_preview = make_display_df(plot_df)
+    drop_internal_cols = [
+        "_x_", "_y_", "_size_", "_size_raw_", "_hover_title_"
+    ]
+    df_preview = df_preview.drop(
+        columns=[c for c in drop_internal_cols if c in df_preview.columns],
+        errors="ignore"
+    )
+
+    st.dataframe(
+        df_preview.head(int(preview_n)),
+        use_container_width=True
+    )
