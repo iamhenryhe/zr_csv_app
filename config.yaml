@@ -1,0 +1,28 @@
+cookie:
+  expiry_days: 30
+  key: "woshizhongruiheyindeliurui"
+  name: "chinassic_auth_cookie"
+
+credentials:
+  usernames:
+    hezj@chinassic.com:
+      email: hezj@chinassic.com
+      first_name: zijie
+      last_name: he
+      password: "12345678"   
+      roles:                  
+        - viewer
+
+    tangwk@chinassic.com:
+      email: tangwk@chinassic.com
+      first_name: weikang
+      last_name: tang
+      password: "12345678"   
+      roles:    
+        - admin
+
+# （可选）如果你之后要开放“注册 register_user”，可以加这个白名单
+pre-authorized:
+  emails:
+    - hezj@chinassic.com
+    - tangwk@chinassic.com
