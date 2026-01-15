@@ -1,54 +1,9 @@
+import re
+import pandas as pd
 import streamlit as st
-import yaml
-from yaml.loader import SafeLoader
-import streamlit_authenticator as stauth
+import plotly.express as px
 
 st.set_page_config(page_title="业绩断层0.1", layout="wide")
-
-# =========================
-# AUTH 门禁
-# =========================
-CONFIG_PATH = "config.yaml"
-
-with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-    config = yaml.load(f, Loader=SafeLoader)
-
-
-api_key = st.secrets.get("AUTH_API_KEY", None)
-
-authenticator = stauth.Authenticate(
-    config["credentials"],
-    config["cookie"]["name"],
-    config["cookie"]["key"],
-    config["cookie"]["expiry_days"],
-    api_key=api_key,          # 2FA 用
-)
-
-authenticator.login(location="main")  
-
-if st.session_state.get("authentication_status") is True:
-    authenticator.logout(location="sidebar")
-elif st.session_state.get("authentication_status") is False:
-    st.error("邮箱或密码错误")
-    st.stop()
-else:
-    st.info("请先登录（仅限 @chinassic.com）")
-
-    with st.expander("公司员工注册（仅限中睿合银内部使用）", expanded=False):
-        try:
-            ok = authenticator.register_user(
-                domains=["chinassic.com"],
-                two_factor_auth=True
-            )
-            if ok:
-                st.success("注册成功，请返回登录")
-                with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-                    yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
-        except Exception as e:
-            st.error(e)
-
-    st.stop()
-
 # =========================================================
 # 模块激活状态 reference： aiagents-stock 的模块按钮：https://github.com/oficcejo/aiagents-stock）
 # =========================================================
