@@ -1,28 +1,25 @@
 cookie:
   expiry_days: 30
-  key: "woshizhongruiheyindeliurui"
-  name: "chinassic_auth_cookie"
-
+  key: woshizhongruiheyindeliurui
+  name: chinassic_auth_cookie
 credentials:
   usernames:
-    hezj@chinassic.com:
-      email: hezj@chinassic.com
+    '15908130915':
+      email: tanwk@chinassic.com
+      first_name: weikang
+      last_name: tan
+      password: zrty600030
+      roles:
+      - viewer
+
+    hezijie:
+      email: henryovo62@gmail.com
       first_name: zijie
       last_name: he
-      password: "12345678"   
-      roles:                  
-        - viewer
-
-    tangwk@chinassic.com:
-      email: tangwk@chinassic.com
-      first_name: weikang
-      last_name: tang
-      password: "12345678"   
-      roles:    
-        - admin
-
-# （可选）如果你之后要开放“注册 register_user”，可以加这个白名单
+      password: a12345679
+      roles:
+      - admin
 pre-authorized:
   emails:
-    - hezj@chinassic.com
-    - tangwk@chinassic.com
+  - henryovo62@gmail.com
+  - tanwk@chinassic.com
