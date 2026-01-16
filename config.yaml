@@ -12,7 +12,7 @@ credentials:
       roles:
       - viewer
 
-    hezijie:
+    admin:
       email: henryovo62@gmail.com
       first_name: zijie
       last_name: he
