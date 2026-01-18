@@ -1,41 +1,9 @@
+import re
+import pandas as pd
 import streamlit as st
-import yaml
-from yaml.loader import SafeLoader
-import streamlit_authenticator as stauth
-from streamlit_authenticator.utilities.hasher import Hasher
+import plotly.express as px
 
 st.set_page_config(page_title="业绩断层0.1", layout="wide")
-
-# ==========
-#   AUTH
-# ==========
-CONFIG_PATH = "config.yaml"
-
-with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-    config = yaml.load(f, Loader=SafeLoader)
-
-authenticator = stauth.Authenticate(
-    config["credentials"],
-    config["cookie"]["name"],
-    config["cookie"]["key"],
-    config["cookie"]["expiry_days"],
-)
-
-# 登录框
-authenticator.login(location="main")
-auth_status = st.session_state.get("authentication_status")
-
-if auth_status is True:
-    authenticator.logout(location="sidebar")
-else:
-    if auth_status is False:
-        st.toast("账号或密码错误", icon="❌")
-    else:
-        st.info("请先登录（仅限内部账号）")
-
-    st.stop()
-
-
 # =========================================================
 # 模块激活状态 reference： aiagents-stock 的模块按钮：https://github.com/oficcejo/aiagents-stock）
 # =========================================================
@@ -319,31 +287,13 @@ with tabC:
     show_block(df_C, "C")
 
 # =========================
-#YOY分箱 用于可视化 点的大小选择更小
-# =========================
-def yoy_to_size_bucket(v):
-    if pd.isna(v):
-        return 6
-    if v < 0:
-        return 6
-    elif v <= 0.5:      # 0–50%
-        return 10
-    elif v <= 1.0:      # 50–100%
-        return 14
-    elif v <= 2.0:      # 100–200%
-        return 18
-    else:               # >200%
-        return 22
-
-
-# =========================
 # 可视化
 # =========================
 st.divider()
 st.header("2D可视化")
 
 use_c = len(selected_filter_cols) > 0
-plot_df = df_C.copy() if use_c else df_after_date.copy()
+plot_df = df_C.copy() if use_c else df_B.copy()
 
 if plot_df.empty:
     st.warning("当前选择的数据源为空，无法绘图。")
@@ -396,7 +346,7 @@ if is_yoy_qoq_col(y_col):
 # =========================
 # X 和 Y 范围控制
 # =========================
-st.subheader("指定代码（不选则默认符合筛选条件的全部标的）")
+st.subheader("指定代码")
 
 HAS_NAME = "证券简称" in plot_df.columns
 HAS_CODE = "证券代码" in plot_df.columns
@@ -422,36 +372,15 @@ if HAS_NAME or HAS_CODE:
 
     all_labels = sorted(label_to_index.keys())
 
-# =========================
-# 指定 / 排除  可多选
-# =========================
-
-col_keep, col_drop = st.columns(2)
-
-with col_keep:
-    keep_labels = st.multiselect(
-        "添加（可多选，输入股票代码或简称即可）",
+    selected_labels = st.multiselect(
+        "输入或选择证券（支持 证券代码 / 证券简称）",
         options=all_labels,
-        default=[],
-        help="只显示你选中的证券"
+        default=[]
     )
 
-with col_drop:
-    drop_labels = st.multiselect(
-        "删除（可多选）",
-        options=all_labels,
-        default=[],
-        help="这些证券不会出现在图中"
-    )
-
-if keep_labels:
-    keep_idx = [label_to_index[l] for l in keep_labels]
-    plot_df = plot_df.loc[keep_idx].copy()
-
-if drop_labels:
-    drop_idx = {label_to_index[l] for l in drop_labels}
-    plot_df = plot_df.loc[~plot_df.index.isin(drop_idx)].copy()
-
+    if selected_labels:
+        idx = [label_to_index[l] for l in selected_labels]
+        plot_df = plot_df.loc[idx].copy()
 
 col_x, col_y = st.columns(2)
 
@@ -493,14 +422,8 @@ with col_y:
 
 need = ["_x_", "_y_"]
 if size_col != "(不使用)":
-
-    raw = plot_df[size_col].map(to_number)
-
-    if is_yoy_qoq_col(size_col):
-        plot_df["_size_"] = raw.apply(yoy_to_size_bucket)
-    else:
-        plot_df["_size_"] = raw.abs()
-
+    plot_df["_size_raw_"] = plot_df[size_col].map(to_number)
+    plot_df["_size_"] = plot_df["_size_raw_"].abs()
     need.append("_size_")
 
 plot_df = plot_df.dropna(subset=need)
