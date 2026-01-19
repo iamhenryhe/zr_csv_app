@@ -12,6 +12,62 @@ credentials:
       roles:
       - viewer
 
+    '18608088518':
+      email: hezj@chinassic.com
+      first_name: rui
+      last_name: liu
+      password: zrty600030
+      roles:
+      - viewer
+
+    '13688128302':
+      email: yangzy@chinassic.com
+      first_name: ziyi
+      last_name: yang
+      password: zrty600030
+      roles:
+      - viewer
+    
+    '18684094521':
+      email: yexk@chinassic.com
+      first_name: xiaokun
+      last_name: ye
+      password: zrty600030
+      roles:
+      - viewer
+    
+    '18215588237':
+      email: yangks@chinassic.com
+      first_name: kunshan
+      last_name: yang
+      password: zrty600030
+      roles:
+      - viewer
+
+    '13438216458':
+      email: zhengm@chinassic.com
+      first_name: miao
+      last_name: zheng
+      password: zrty600030
+      roles:
+      - viewer
+
+    '13229514572':
+      email: yinjx@chinassic.com
+      first_name: jixin
+      last_name: yin
+      password: zrty600030
+      roles:
+      - viewer
+
+    '18884558596':
+      email: xianzw@chinassic.com
+      first_name: zhiwei
+      last_name: xian
+      password: zrty600030
+      roles:
+      - viewer
+    
     admin:
       email: henryovo62@gmail.com
       first_name: zijie
@@ -19,7 +75,14 @@ credentials:
       password: a12345679
       roles:
       - admin
+
 pre-authorized:
   emails:
   - henryovo62@gmail.com
   - tanwk@chinassic.com
+  - yangzy@chinassic.com
+  - yexk@chinassic.com
+  - yangks@chinassic.com
+  - zhengm@chinassic.com
+  - yinjx@chinassic.com
+  - xianzw@chinassic.com
