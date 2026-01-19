@@ -10,6 +10,36 @@ from streamlit_authenticator.utilities.hasher import Hasher
 
 st.set_page_config(page_title="业绩断层0.1", layout="wide")
 
+# ==========
+#   AUTH
+# ==========
+CONFIG_PATH = "config.yaml"
+
+with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+    config = yaml.load(f, Loader=SafeLoader)
+
+authenticator = stauth.Authenticate(
+    config["credentials"],
+    config["cookie"]["name"],
+    config["cookie"]["key"],
+    config["cookie"]["expiry_days"],
+)
+
+# 登录框
+authenticator.login(location="main")
+auth_status = st.session_state.get("authentication_status")
+
+if auth_status is True:
+    authenticator.logout(location="sidebar")
+else:
+    if auth_status is False:
+        st.toast("账号或密码错误", icon="❌")
+    else:
+        st.info("请先登录（仅限内部账号）")
+
+    st.stop()
+
+
 # =========================================================
 # 模块激活状态 reference： aiagents-stock 的模块按钮：https://github.com/oficcejo/aiagents-stock）
 # =========================================================
