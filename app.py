@@ -24,9 +24,21 @@ if st.sidebar.button("📊 业绩断层"):
     else:
         st.session_state.active_module = "业绩断层"
 
-if st.session_state.active_module != "业绩断层":
+if st.sidebar.button("🔥 传播度"):
+    if st.session_state.active_module == "传播度":
+        st.session_state.active_module = None
+    else:
+        st.session_state.active_module = "传播度"
+
+if st.session_state.active_module is None:
     st.info("👈 点击左侧项目以展开指定投研模块")
     st.stop()
+
+# 传播度占位
+if st.session_state.active_module == "传播度":
+    st.title("传播度（一样。数据集展示 可视化）")
+    st.stop()
+
 
 # 业绩断层的module
 st.title("业绩断层0.1")
@@ -615,6 +627,7 @@ fig.update_layout(
     )
 )
 
+SIZE_SCALE = 0.5
 if is_yoy_qoq_col(x_col):
     fig.update_xaxes(ticksuffix="%")
 if is_yoy_qoq_col(y_col):
