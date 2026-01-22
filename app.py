@@ -24,7 +24,7 @@ if st.sidebar.button("📊 业绩断层"):
     else:
         st.session_state.active_module = "业绩断层"
 
-if st.sidebar.button("🔥 传播度"):
+if st.sidebar.button("🔥 传播度（测试）"):
     if st.session_state.active_module == "传播度":
         st.session_state.active_module = None
     else:
@@ -34,10 +34,17 @@ if st.session_state.active_module is None:
     st.info("👈 点击左侧项目以展开指定投研模块")
     st.stop()
 
-# 传播度占位
+# 传播度模块
+######
+######
+#3####
 if st.session_state.active_module == "传播度":
-    st.title("传播度（一样。数据集展示 可视化）")
+    from cbd import render as render_cbd
+    render_cbd()  # 默认读 output/master-output/sector/
     st.stop()
+######
+######
+#3####
 
 
 # 业绩断层的module
