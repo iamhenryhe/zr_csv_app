@@ -262,5 +262,27 @@ def render():
     )
     st.plotly_chart(fig, use_container_width=True)
 
+    st.subheader("趋势折线（同一板块/个股连线）")
+
+    df_line = df_all.copy()
+    df_line = df_line.dropna(subset=[COL_TIME, COL_SCORE, group_col])
+    fig_line = px.line(
+        df_line,
+        x=COL_TIME,
+        y=COL_SCORE,
+        color=group_col,
+        markers=True,
+        title=f"{cn}趋势变化（{title_suffix}）",
+    )
+    fig_line.update_xaxes(categoryorder="array", categoryarray=_ordered_unique(x_order))
+    fig_line.update_layout(
+        xaxis_title=COL_TIME,
+        yaxis_title=COL_SCORE,
+        height=450,
+        margin=dict(l=10, r=10, t=50, b=10),
+    )
+    st.plotly_chart(fig_line, use_container_width=True)
+
+
     with st.expander("数据预览", expanded=False):
         st.dataframe(df_all, use_container_width=True)
