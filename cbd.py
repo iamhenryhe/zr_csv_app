@@ -5,7 +5,7 @@ import pandas as pd
 import streamlit as st
 import plotly.express as px
 
-# 结构：可能要删除output
+# 结构：
 # output/master-output/{sector|company}/total-score/plot/
 # 里面包含：
 #   1/2/3-YYYY-MM-DD.csv   -> 时间分段
@@ -20,11 +20,9 @@ COL_SCORE = "得分"
 COL_SECTOR = "板块"
 COL_COMPANY = "个股"
 
-# 只要两个来源：时间分段(123) vs 汇总(T)
 SOURCE_OPTIONS = ["时间分段", "汇总"]
 SOURCE_LABELS = {"时间分段": "时间分段（123）", "汇总": "汇总（T）"}
 
-# 时间分段支持 1/2/3 组合
 SLOT_OPTIONS = ["1", "2", "3"]
 
 
@@ -64,7 +62,6 @@ def _extract_date_from_name(name: str):
 
 
 def _extract_slot_from_name(name: str):
-    # 1/2/3-YYYY-MM-DD.csv
     n = name.strip().lower()
     if _is_t_file(n):
         return None
@@ -73,21 +70,26 @@ def _extract_slot_from_name(name: str):
 
 
 def _slot_rank(filename: str) -> int:
-    """
-    用于同一天内部排序：
-    1/2/3 在前，T 在后
-    """
     if _is_t_file(filename):
         return 9
     s = _extract_slot_from_name(filename)
     return int(s) if s in {"1", "2", "3"} else 8
 
 
+def _build_baseline_path(base: Path, source: str, baseline_date, baseline_slot: str | None):
+    """根据 source + baseline_date(+slot) 生成基准文件路径"""
+    d = pd.to_datetime(baseline_date).date()
+    if source == "汇总":
+        return base / f"t-{d}.csv"
+    # 时间分段
+    return base / f"{baseline_slot}-{d}.csv"
+
+
 def render():
     st.title("传播度")
 
     # =========================
-    # Sidebar 的三个功能。持续更新
+    # Sidebar：数据类型 / 数据来源 / 分段 / 时间范围
     # =========================
     data_type = st.sidebar.radio(
         "数据类型",
@@ -116,22 +118,36 @@ def render():
         slot_pick = st.sidebar.multiselect(
             "选择分段（可多选）",
             options=SLOT_OPTIONS,
-            default=SLOT_OPTIONS, 
+            default=SLOT_OPTIONS,
             key="cbd_slot_pick",
         )
         if not slot_pick:
             st.sidebar.warning("未选择任何分段。")
             st.stop()
 
-    # 时间范围：默认允许 start=end
     st.sidebar.subheader("时间范围")
     c1, c2 = st.sidebar.columns(2)
     start_date = c1.date_input("开始", key="cbd_start_date")
     end_date = c2.date_input("结束", key="cbd_end_date")
-
     if start_date > end_date:
         st.sidebar.error("开始日期不能晚于结束日期。")
         st.stop()
+
+    # =========================
+    # TopN（sidebar）
+    # =========================
+    st.sidebar.subheader("TopN（基于某一天舆情生成近期趋势）")
+    topn_on = st.sidebar.checkbox("启用 Top-N 筛选", value=False, key="cbd_topn_on")
+    topn_n = None
+    baseline_date = None
+    baseline_slot = None
+
+    if topn_on:
+        topn_n = st.sidebar.number_input("N（默认10）", min_value=1, max_value=5000, value=10, step=5, key="cbd_topn_n")
+        baseline_date = st.sidebar.date_input("基准日期（指定TopN基准）", key="cbd_topn_date")
+
+        if source == "时间分段":
+            baseline_slot = st.sidebar.selectbox("基准分段", options=SLOT_OPTIONS, index=0, key="cbd_topn_slot")
 
     # =========================
     # 列出目录下 CSV
@@ -161,24 +177,21 @@ def render():
         if start_date <= d <= end_date:
             filtered.append((d, f))
 
-    # 排序
     filtered.sort(key=lambda x: (x[0], _slot_rank(x[1].name)))
     files_final = [f for _, f in filtered]
 
     st.caption(f"自动选中 CSV 数量：{len(files_final)}（{start_date} ~ {end_date}）")
-
     if not files_final:
         st.warning("该条件下没有匹配的 CSV。")
         st.stop()
 
     # =========================
-    # 读取 
+    # 读取
     # =========================
     required = {COL_TIME, COL_SCORE, group_col}
     dfs = []
     for p in files_final:
         df = _read_csv(p)
-
         if not required.issubset(df.columns):
             st.error(f"{p.name} 缺少列：{sorted(list(required - set(df.columns)))}")
             st.stop()
@@ -190,21 +203,56 @@ def render():
 
     df_all = pd.concat(dfs, ignore_index=True)
 
-    #    用的是文件名生成 x_order
+    # 用文件名生成 x_order
     x_order = []
     for p in files_final:
         d = _extract_date_from_name(p.name)
         if d is None:
             continue
         if source == "汇总":
-            x_order.append(str(d))    
+            x_order.append(f"{d}/t")
         else:
             slot = _extract_slot_from_name(p.name) or ""
-            x_order.append(f"{d}/{slot}") 
+            x_order.append(f"{d}/{slot}")
 
-    # 有些 CSV 内部“时间”列可能写成 YYYY-MM-DD/1 或 YYYY-MM-DD（你现在就是这种）
-    # 我们强制 Plotly 按 x_order 排序：把 df_all[时间] 变成有序分类
+
     df_all[COL_TIME] = pd.Categorical(df_all[COL_TIME], categories=_ordered_unique(x_order), ordered=True)
+
+    # =========================
+    # TopN 过滤：用“基准CSV”算名单，再过滤 df_all
+    # =========================
+    if topn_on:
+        baseline_path = _build_baseline_path(base, source, baseline_date, baseline_slot)
+
+        if not baseline_path.exists():
+            st.error(f"TopN 基准文件不存在：{baseline_path.name}（请检查基准日期/分段是否有文件）")
+            st.stop()
+
+        df_base = _read_csv(baseline_path)
+        if not required.issubset(df_base.columns):
+            st.error(f"TopN 基准文件列不匹配：{baseline_path.name} 缺少 {sorted(list(required - set(df_base.columns)))}")
+            st.stop()
+
+        df_base[group_col] = df_base[group_col].astype(str).str.strip()
+        df_base[COL_SCORE] = pd.to_numeric(df_base[COL_SCORE], errors="coerce")
+        df_base = df_base.dropna(subset=[group_col, COL_SCORE])
+
+        top_list = (
+            df_base.sort_values(COL_SCORE, ascending=False)[group_col]
+            .dropna()
+            .astype(str)
+            .head(int(topn_n))
+            .tolist()
+        )
+        top_set = set(top_list)
+
+        st.sidebar.caption(f"TopN 基准：{baseline_path.name}（Top{int(topn_n)}）")
+
+        df_all = df_all[df_all[group_col].isin(top_set)].copy()
+
+        if df_all.empty:
+            st.warning("TopN 过滤后数据为空（说明基准TopN名单在该时间范围内没有对应记录）。")
+            st.stop()
 
     # =========================
     # 添加 / 删除（板块/个股）
@@ -243,6 +291,8 @@ def render():
     title_suffix = SOURCE_LABELS[source]
     if source == "时间分段":
         title_suffix += f"｜分段{','.join(slot_pick)}"
+    if topn_on:
+        title_suffix += f"｜Top{int(topn_n)}@{baseline_date}"
 
     fig = px.scatter(
         df_all,
@@ -251,9 +301,7 @@ def render():
         color=group_col,
         title=f"{cn}打分（{title_suffix}）",
     )
-
     fig.update_xaxes(categoryorder="array", categoryarray=_ordered_unique(x_order))
-
     fig.update_layout(
         xaxis_title=COL_TIME,
         yaxis_title=COL_SCORE,
@@ -262,10 +310,9 @@ def render():
     )
     st.plotly_chart(fig, use_container_width=True)
 
-    st.subheader("趋势折线（同一板块/个股连线）")
+    st.subheader("趋势折线图）")
+    df_line = df_all.dropna(subset=[COL_TIME, COL_SCORE, group_col]).copy()
 
-    df_line = df_all.copy()
-    df_line = df_line.dropna(subset=[COL_TIME, COL_SCORE, group_col])
     fig_line = px.line(
         df_line,
         x=COL_TIME,
@@ -282,7 +329,6 @@ def render():
         margin=dict(l=10, r=10, t=50, b=10),
     )
     st.plotly_chart(fig_line, use_container_width=True)
-
 
     with st.expander("数据预览", expanded=False):
         st.dataframe(df_all, use_container_width=True)
