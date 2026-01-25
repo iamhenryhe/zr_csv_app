@@ -258,12 +258,24 @@ mask = pd.Series(True, index=df_after_date.index)
 
 for c in selected_filter_cols:
     with st.sidebar.expander(f"条件：{c}", expanded=True):
-        op_ui = st.selectbox("操作符", OPS_UI, key=f"op_{c}")
+        if c == "2025PE":
+            default_op_index = OPS_UI.index("介于")
+        else:
+            default_op_index = 0
+        # ============================
+
+        op_ui = st.selectbox(
+            "操作符",
+            OPS_UI,
+            index=default_op_index,
+            key=f"op_{c}"
+        )
         op = OP_MAP.get(op_ui, op_ui)
 
+
         if is_yoy_qoq_col(c):
-            v1 = st.number_input("阈值1（%）", value=20.0, key=f"v1_{c}")
-            v2 = st.number_input("阈值2（%）", value=50.0, key=f"v2_{c}") if op == "between" else None
+            v1 = st.number_input("阈值1（%）", value=0.0, key=f"v1_{c}")
+            v2 = st.number_input("阈值2（%）", value=100.0, key=f"v2_{c}") if op == "between" else None
             s = pct_series(df_after_date, c)
             mask &= apply_rule(mask, s, op, v1 / 100, None if v2 is None else v2 / 100)
         else:
