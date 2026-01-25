@@ -10,7 +10,7 @@ import plotly.express as px
 # 里面包含：
 #   1/2/3-YYYY-MM-DD.csv   -> 时间分段
 #   t-YYYY-MM-DD.csv       -> 汇总
-BASE_DIR = Path("output") / "master-output"
+BASE_DIR = Path("master-output") 
 
 TYPE_OPTIONS = ["sector", "company"]
 TYPE_LABELS = {"sector": "板块", "company": "个股"}
@@ -294,21 +294,23 @@ def render():
     if topn_on:
         title_suffix += f"｜Top{int(topn_n)}@{baseline_date}"
 
-    fig = px.scatter(
-        df_all,
-        x=COL_TIME,
-        y=COL_SCORE,
-        color=group_col,
-        title=f"{cn}打分（{title_suffix}）",
-    )
-    fig.update_xaxes(categoryorder="array", categoryarray=_ordered_unique(x_order))
-    fig.update_layout(
-        xaxis_title=COL_TIME,
-        yaxis_title=COL_SCORE,
-        height=650,
-        margin=dict(l=10, r=10, t=50, b=10),
-    )
-    st.plotly_chart(fig, use_container_width=True)
+    with st.expander("散点图（可以辅助TOP-K选择）", expanded=False):
+        fig = px.scatter(
+            df_all,
+            x=COL_TIME,
+            y=COL_SCORE,
+            color=group_col,
+            title=f"{cn}打分（{title_suffix}）",
+        )
+        fig.update_xaxes(categoryorder="array", categoryarray=_ordered_unique(x_order))
+        fig.update_layout(
+            xaxis_title=COL_TIME,
+            yaxis_title=COL_SCORE,
+            height=650,
+            margin=dict(l=10, r=10, t=50, b=10),
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
 
     st.subheader("趋势折线图）")
     df_line = df_all.dropna(subset=[COL_TIME, COL_SCORE, group_col]).copy()
