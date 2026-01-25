@@ -312,7 +312,7 @@ def render():
         st.plotly_chart(fig, use_container_width=True)
 
 
-    st.subheader("趋势折线图）")
+    st.subheader("趋势折线图")
     df_line = df_all.dropna(subset=[COL_TIME, COL_SCORE, group_col]).copy()
 
     fig_line = px.line(
