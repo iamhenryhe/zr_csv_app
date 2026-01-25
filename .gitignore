@@ -1,6 +1,14 @@
-# data/
-# output/
-# master-output/
-# *.csv
-# *.xlsx
+# ========= Python =========
+__pycache__/
+*.pyc
+
+# ========= macOS =========
+.DS_Store
+
+# ========= data & output (do NOT track going forward) =========
+data/
+output/
+master-output/
+*.csv
+*.xlsx
 
