@@ -5,10 +5,8 @@ __pycache__/
 # ========= macOS =========
 .DS_Store
 
-# ========= data & output (do NOT track going forward) =========
-data/
-output/
-master-output/
-*.csv
-*.xlsx
+# ========= virtual env =========
+env/
+venv/
+.venv/
 
