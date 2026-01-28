@@ -126,9 +126,22 @@ def render():
             st.stop()
 
     st.sidebar.subheader("时间范围")
+    
+    #更改默认的时间范围tt
     c1, c2 = st.sidebar.columns(2)
-    start_date = c1.date_input("开始", key="cbd_start_date")
-    end_date = c2.date_input("结束", key="cbd_end_date")
+    end_default = pd.Timestamp.today().date()
+    start_default = end_default - pd.Timedelta(days=10)
+    start_date = c1.date_input(
+        "开始",
+        value=start_default,
+        key="cbd_start_date",
+    )
+    end_date = c2.date_input(
+        "结束",
+        value=end_default,
+        key="cbd_end_date",
+    )
+    
     if start_date > end_date:
         st.sidebar.error("开始日期不能晚于结束日期。")
         st.stop()
@@ -136,7 +149,9 @@ def render():
     # =========================
     # TopN（sidebar）
     # =========================
-    st.sidebar.subheader("TopN（基于某一天舆情生成近期趋势）")
+    st.sidebar.subheader("Top-N筛选")
+    st.sidebar.caption("选择需要分析的目标日期,  \n系统将筛选出该目标日期内的板块 / 个股前 N 名；  \n后续仅基于该次筛选出的前 N 名板块 / 个股，开展可视化展示。")
+    st.sidebar.caption("⚠️ ：不支持跨日期筛选，并非提取所有日期中的前 N 名名单，仅聚焦选定的日期做筛选。")
     topn_on = st.sidebar.checkbox("启用 Top-N 筛选", value=False, key="cbd_topn_on")
     topn_n = None
     baseline_date = None

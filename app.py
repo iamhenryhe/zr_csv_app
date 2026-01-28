@@ -8,7 +8,7 @@ from yaml.loader import SafeLoader
 import streamlit_authenticator as stauth
 from streamlit_authenticator.utilities.hasher import Hasher
 
-st.set_page_config(page_title="业绩断层0.1", layout="wide")
+st.set_page_config(page_title="中睿投研agent", layout="wide")
 
 # =========================================================
 # 模块激活状态 reference： aiagents-stock 的模块按钮：https://github.com/oficcejo/aiagents-stock）
@@ -24,7 +24,7 @@ if st.sidebar.button("📊 业绩断层"):
     else:
         st.session_state.active_module = "业绩断层"
 
-if st.sidebar.button("🔥 传播度（测试）"):
+if st.sidebar.button("🔥 传播度"):
     if st.session_state.active_module == "传播度":
         st.session_state.active_module = None
     else:
