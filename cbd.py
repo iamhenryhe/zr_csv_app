@@ -10,8 +10,14 @@ import plotly.express as px
 # 里面包含：
 #   1/2/3-YYYY-MM-DD.csv   -> 时间分段
 #   t-YYYY-MM-DD.csv       -> 汇总
-BASE_DIR = Path("master-output") 
-
+import os
+BASE_DIR = Path(
+    os.getenv(
+        "CBD_BASE_DIR",
+        "/mnt/oss/chuanbodu/master-output"
+    )
+)
+ 
 TYPE_OPTIONS = ["sector", "company"]
 TYPE_LABELS = {"sector": "板块", "company": "个股"}
 
@@ -84,10 +90,37 @@ def _build_baseline_path(base: Path, source: str, baseline_date, baseline_slot: 
     # 时间分段
     return base / f"{baseline_slot}-{d}.csv"
 
+def _find_latest_baseline(base: Path, source: str, baseline_date, baseline_slot: str | None):
+    target_date = pd.to_datetime(baseline_date).date()
+    candidates = []
+
+    for f in base.glob("*.csv"):
+        name = f.name
+
+        # 来源匹配
+        if source == "汇总":
+            if not _is_t_file(name):
+                continue
+        else:
+            if _is_t_file(name):
+                continue
+            if _extract_slot_from_name(name) != baseline_slot:
+                continue
+
+        d = _extract_date_from_name(name)
+        if d is None or d > target_date:
+            continue
+
+        candidates.append((d, f))
+
+    if not candidates:
+        return None, None
+
+    candidates.sort(key=lambda x: x[0], reverse=True)
+    return candidates[0]   # (date, path)
 
 def render():
     st.title("传播度")
-
     # =========================
     # Sidebar：数据类型 / 数据来源 / 分段 / 时间范围
     # =========================
@@ -109,9 +142,9 @@ def render():
 
     cn = TYPE_LABELS.get(data_type, data_type)
     group_col = COL_SECTOR if data_type == "sector" else COL_COMPANY
-
+    
+    #原来用于展示数据路径位置的。为简洁删掉了
     base = BASE_DIR / data_type / "total-score" / "plot"
-    st.sidebar.caption(f"当前路径：{base}")
 
     slot_pick = None
     if source == "时间分段":
@@ -126,8 +159,7 @@ def render():
             st.stop()
 
     st.sidebar.subheader("时间范围")
-    
-    #更改默认的时间范围tt
+    #时间默认当天到当天减十
     c1, c2 = st.sidebar.columns(2)
     end_default = pd.Timestamp.today().date()
     start_default = end_default - pd.Timedelta(days=10)
@@ -146,23 +178,45 @@ def render():
         st.sidebar.error("开始日期不能晚于结束日期。")
         st.stop()
 
+
     # =========================
     # TopN（sidebar）
     # =========================
-    st.sidebar.subheader("Top-N筛选")
-    st.sidebar.caption("选择需要分析的目标日期,  \n系统将筛选出该目标日期内的板块 / 个股前 N 名；  \n后续仅基于该次筛选出的前 N 名板块 / 个股，开展可视化展示。")
-    st.sidebar.caption("⚠️ ：不支持跨日期筛选，并非提取所有日期中的前 N 名名单，仅聚焦选定的日期做筛选。")
-    topn_on = st.sidebar.checkbox("启用 Top-N 筛选", value=False, key="cbd_topn_on")
+    st.sidebar.subheader("Top-N")
+    topn_on = st.sidebar.checkbox("Top-N 筛选", value=False, key="cbd_topn_on")
     topn_n = None
     baseline_date = None
     baseline_slot = None
 
     if topn_on:
-        topn_n = st.sidebar.number_input("N（默认10）", min_value=1, max_value=5000, value=10, step=5, key="cbd_topn_n")
-        baseline_date = st.sidebar.date_input("基准日期（指定TopN基准）", key="cbd_topn_date")
+        topn_n = st.sidebar.number_input(
+            "N（默认10）",
+            min_value=1,
+            max_value=5000,
+            value=10,
+            step=5,
+            key="cbd_topn_n"
+        )
 
+        all_dates = [
+            _extract_date_from_name(f.name)
+            for f in base.glob("*.csv")
+            if _extract_date_from_name(f.name) is not None
+        ]
+        latest_date = max(all_dates)
+
+        baseline_date = st.sidebar.date_input(
+            "基准日期（指定TopN基准）",
+            value=latest_date,     
+            key="cbd_topn_date_v2"
+        )
         if source == "时间分段":
-            baseline_slot = st.sidebar.selectbox("基准分段", options=SLOT_OPTIONS, index=0, key="cbd_topn_slot")
+            baseline_slot = st.sidebar.selectbox(
+                "基准分段",
+                options=SLOT_OPTIONS,
+                index=0,
+                key="cbd_topn_slot"
+            )
 
     # =========================
     # 列出目录下 CSV
@@ -195,11 +249,6 @@ def render():
     filtered.sort(key=lambda x: (x[0], _slot_rank(x[1].name)))
     files_final = [f for _, f in filtered]
 
-    st.caption(f"自动选中 CSV 数量：{len(files_final)}（{start_date} ~ {end_date}）")
-    if not files_final:
-        st.warning("该条件下没有匹配的 CSV。")
-        st.stop()
-
     # =========================
     # 读取
     # =========================
@@ -230,7 +279,6 @@ def render():
             slot = _extract_slot_from_name(p.name) or ""
             x_order.append(f"{d}/{slot}")
 
-
     df_all[COL_TIME] = pd.Categorical(df_all[COL_TIME], categories=_ordered_unique(x_order), ordered=True)
 
     # =========================
@@ -240,34 +288,44 @@ def render():
         baseline_path = _build_baseline_path(base, source, baseline_date, baseline_slot)
 
         if not baseline_path.exists():
-            st.error(f"TopN 基准文件不存在：{baseline_path.name}（请检查基准日期/分段是否有文件）")
-            st.stop()
+            fallback_date, fallback_path = _find_latest_baseline(
+            base, source, baseline_date, baseline_slot
+            )
 
-        df_base = _read_csv(baseline_path)
-        if not required.issubset(df_base.columns):
-            st.error(f"TopN 基准文件列不匹配：{baseline_path.name} 缺少 {sorted(list(required - set(df_base.columns)))}")
-            st.stop()
+            if fallback_path is None:
+                st.error("TopN 基准文件不存在，且未找到任何可用的历史基准文件。")
+                st.stop()
 
-        df_base[group_col] = df_base[group_col].astype(str).str.strip()
-        df_base[COL_SCORE] = pd.to_numeric(df_base[COL_SCORE], errors="coerce")
-        df_base = df_base.dropna(subset=[group_col, COL_SCORE])
+            st.warning(
+                f"指定的 TopN 基准文件不存在，切换使用可用日期：{fallback_date}"
+            )
+            baseline_path = fallback_path
+            baseline_date = fallback_date
 
-        top_list = (
-            df_base.sort_values(COL_SCORE, ascending=False)[group_col]
-            .dropna()
-            .astype(str)
-            .head(int(topn_n))
-            .tolist()
-        )
-        top_set = set(top_list)
 
-        st.sidebar.caption(f"TopN 基准：{baseline_path.name}（Top{int(topn_n)}）")
+            df_base = _read_csv(baseline_path)
+            if not required.issubset(df_base.columns):
+                st.error(f"TopN 基准文件列不匹配：{baseline_path.name} 缺少 {sorted(list(required - set(df_base.columns)))}")
+                st.stop()
 
-        df_all = df_all[df_all[group_col].isin(top_set)].copy()
+            df_base[group_col] = df_base[group_col].astype(str).str.strip()
+            df_base[COL_SCORE] = pd.to_numeric(df_base[COL_SCORE], errors="coerce")
+            df_base = df_base.dropna(subset=[group_col, COL_SCORE])
 
-        if df_all.empty:
-            st.warning("TopN 过滤后数据为空（说明基准TopN名单在该时间范围内没有对应记录）。")
-            st.stop()
+            top_list = (
+                df_base.sort_values(COL_SCORE, ascending=False)[group_col]
+                .dropna()
+                .astype(str)
+                .head(int(topn_n))
+                .tolist()
+            )
+            top_set = set(top_list)
+
+            df_all = df_all[df_all[group_col].isin(top_set)].copy()
+
+            if df_all.empty:
+                st.warning("TopN 过滤后数据为空（说明基准TopN名单在该时间范围内没有对应记录）。")
+                st.stop()
 
     # =========================
     # 添加 / 删除（板块/个股）
@@ -281,6 +339,7 @@ def render():
             options=all_groups,
             default=[],
             key=f"cbd_keep_{data_type}_{source}",
+            placeholder="请选择或直接输入（可多选）"
         )
 
     with col_drop:
@@ -289,6 +348,7 @@ def render():
             options=all_groups,
             default=[],
             key=f"cbd_drop_{data_type}_{source}",
+            placeholder="请选择或直接输入（可多选）"
         )
 
     if keep_groups:
@@ -309,24 +369,7 @@ def render():
     if topn_on:
         title_suffix += f"｜Top{int(topn_n)}@{baseline_date}"
 
-    with st.expander("散点图（可以辅助TOP-K选择）", expanded=False):
-        fig = px.scatter(
-            df_all,
-            x=COL_TIME,
-            y=COL_SCORE,
-            color=group_col,
-            title=f"{cn}打分（{title_suffix}）",
-        )
-        fig.update_xaxes(categoryorder="array", categoryarray=_ordered_unique(x_order))
-        fig.update_layout(
-            xaxis_title=COL_TIME,
-            yaxis_title=COL_SCORE,
-            height=650,
-            margin=dict(l=10, r=10, t=50, b=10),
-        )
-        st.plotly_chart(fig, use_container_width=True)
-
-
+    #删掉了原来的散点图
     st.subheader("趋势折线图")
     df_line = df_all.dropna(subset=[COL_TIME, COL_SCORE, group_col]).copy()
 
