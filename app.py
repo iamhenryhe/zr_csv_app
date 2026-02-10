@@ -1,11 +1,11 @@
 import streamlit as st
 from auth import require_login
 
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
+#if "logged_in" not in st.session_state:
+#    st.session_state.logged_in = False
 
-if not require_login():
-    st.stop()
+#if not require_login():
+#    st.stop()
 
 import os
 import pandas as pd
@@ -87,7 +87,7 @@ if st.session_state.active_module == "板块数据库":
 
     db_base = os.getenv("DB_BASE_DIR", "").strip()
     # 不配环境变量时，默认用本地目录：board-db
-    render_db(base_dir=Path(db_base) if db_base else Path("knowledgebase"))
+    render_db(base_dir=Path(db_base) if db_base else Path("板块数据库"))
     st.stop()
 
 
